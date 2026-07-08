@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F&D Autonomous Driving</title>
+<style>
+/* ── RESET & BASE ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  background: #000;
+  color: #f5f5f7;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+  background: rgba(0,0,0,0);
+  backdrop-filter: blur(0px);
+  transition: background 0.4s, backdrop-filter 0.4s;
+  border-bottom: 1px solid transparent;
+}
+nav.scrolled {
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+.nav-logo {
+  font-size: 17px; font-weight: 600; letter-spacing: -0.02em; color: #f5f5f7;
+}
+.nav-logo span { color: #4c9eff; }
+.nav-links { display: flex; gap: 28px; }
+.nav-links a {
+  font-size: 13px; color: rgba(255,255,255,0.6); text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #fff; }
+
+/* ── HERO — SCROLL PINNED ── */
+#hero {
+  position: relative;
+  height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* star field canvas */
+#starfield {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  font-size: 13px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: #4c9eff;
+  margin-bottom: 20px;
+  opacity: 0; transform: translateY(16px);
+  animation: fadeUp 0.8s 0.2s ease forwards;
+}
+
+.hero-h1 {
+  font-size: clamp(44px, 7vw, 88px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.0;
+  margin-bottom: 24px;
+  opacity: 0; transform: translateY(24px);
+  animation: fadeUp 0.9s 0.4s ease forwards;
+}
+.hero-h1 .line2 { color: #4c9eff; }
+
+.hero-sub {
+  font-size: clamp(16px, 2.2vw, 21px);
+  color: rgba(255,255,255,0.45);
+  max-width: 520px;
+  line-height: 1.5;
+  margin-bottom: 40px;
+  opacity: 0; transform: translateY(20px);
+  animation: fadeUp 0.9s 0.6s ease forwards;
+}
+
+.hero-cta {
+  display: inline-block;
+  background: #4c9eff;
+  color: #000;
+  font-size: 15px; font-weight: 600;
+  padding: 14px 32px; border-radius: 100px;
+  text-decoration: none;
+  opacity: 0; transform: translateY(16px);
+  animation: fadeUp 0.9s 0.8s ease forwards;
+  transition: background 0.2s, transform 0.2s;
+}
+.hero-cta:hover { background: #6db3ff; transform: scale(1.03); }
+
+.scroll-hint {
+  position: absolute; bottom: 32px;
+  font-size: 12px; color: rgba(255,255,255,0.25);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  opacity: 0; animation: fadeUp 1s 1.4s ease forwards;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.scroll-arrow {
+  width: 20px; height: 20px;
+  border-right: 1.5px solid rgba(255,255,255,0.25);
+  border-bottom: 1.5px solid rgba(255,255,255,0.25);
+  transform: rotate(45deg);
+  animation: bounce 1.6s ease-in-out infinite;
+}
+@keyframes bounce { 0%,100%{transform:rotate(45deg) translateY(0)} 50%{transform:rotate(45deg) translateY(5px)} }
+@keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
+
+/* ── ROAD STRIP (sits between hero and stats) ── */
+.road-strip {
+  position: relative; height: 220px; overflow: hidden;
+  background: #000;
+}
+.road-wrap {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 180px;
+  background: #111214;
+  border-top: 1px solid #222;
+}
+/* perspective lines */
+.road-wrap::before, .road-wrap::after {
+  content:''; position:absolute; bottom:0; width:3px; top:0;
+  background: rgba(255,255,255,0.06);
+}
+.road-wrap::before { left: 12%; }
+.road-wrap::after  { right: 12%; }
+
+.center-dashes {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 4px; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 16px; padding-top: 8px;
+  overflow: hidden;
+}
+.center-dash {
+  width: 4px; height: 24px; border-radius: 2px;
+  background: #ffd60a; flex-shrink: 0;
+  animation: roadroll 0.45s linear infinite;
+}
+@keyframes roadroll { to { transform: translateY(40px); } }
+
+/* radar rings on road */
+.road-radar {
+  position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+  width: 200px; height: 200px; pointer-events: none;
+}
+.rr {
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(76,158,255,0.25);
+  animation: rring 2s ease-out infinite;
+}
+.rr1 { width: 60px;  height: 60px;  top: 70px;  left: 70px;  animation-delay: 0s; }
+.rr2 { width: 110px; height: 110px; top: 45px;  left: 45px;  animation-delay: 0.6s; }
+.rr3 { width: 180px; height: 180px; top: 10px;  left: 10px;  animation-delay: 1.2s; }
+@keyframes rring { 0%{opacity:.7;transform:scale(.7)} 100%{opacity:0;transform:scale(1.1)} }
+
+.road-car {
+  position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+  animation: carfloat 2.5s ease-in-out infinite;
+  filter: drop-shadow(0 10px 30px rgba(76,158,255,0.5));
+}
+@keyframes carfloat { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-8px)} }
+
+/* ── STAT RIBBON ── */
+.stat-ribbon {
+  background: #0a0a0a;
+  border-top: 1px solid #1d1d1f;
+  border-bottom: 1px solid #1d1d1f;
+  display: flex; justify-content: center;
+}
+.stat-cell {
+  flex: 1; max-width: 240px;
+  padding: 40px 24px; text-align: center;
+  border-right: 1px solid #1d1d1f;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-n {
+  font-size: 52px; font-weight: 700;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #4c9eff 0%, #a78bfa 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1; margin-bottom: 8px;
+}
+.stat-l { font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.4; }
+
+/* ── REVEAL UTILITY ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-left  { opacity:0; transform:translateX(-40px); transition: opacity 0.8s ease, transform 0.8s ease; }
+.reveal-right { opacity:0; transform:translateX(40px);  transition: opacity 0.8s ease, transform 0.8s ease; }
+.reveal-left.visible, .reveal-right.visible { opacity:1; transform:translateX(0); }
+.delay-1 { transition-delay: 0.1s; }
+.delay-2 { transition-delay: 0.2s; }
+.delay-3 { transition-delay: 0.3s; }
+.delay-4 { transition-delay: 0.4s; }
+.delay-5 { transition-delay: 0.5s; }
+
+/* ── GENERIC SECTION ── */
+.section {
+  padding: 120px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.eyebrow {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #4c9eff;
+  margin-bottom: 16px;
+}
+.section-h2 {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700; letter-spacing: -0.03em;
+  line-height: 1.1; margin-bottom: 20px;
+  color: #f5f5f7;
+}
+.section-body {
+  font-size: 17px; color: rgba(255,255,255,0.45);
+  max-width: 540px; line-height: 1.65; margin-bottom: 56px;
+}
+
+/* ── FEATURE BENTO GRID ── */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto;
+  gap: 2px;
+}
+.bento-cell {
+  background: #111214;
+  padding: 40px 36px;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.3s;
+  cursor: default;
+}
+.bento-cell:hover { background: #161618; }
+.bento-cell.wide { grid-column: span 2; }
+.bento-cell.tall { grid-row: span 2; }
+
+.bento-cell::after {
+  content: '';
+  position: absolute; inset: 0;
+  border: 1px solid rgba(255,255,255,0.05);
+  pointer-events: none;
+}
+
+.bento-icon {
+  font-size: 36px; margin-bottom: 20px; display: block;
+  transition: transform 0.3s;
+}
+.bento-cell:hover .bento-icon { transform: scale(1.12) rotate(-4deg); }
+
+.bento-h { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 10px; color: #f5f5f7; }
+.bento-p { font-size: 14px; color: rgba(255,255,255,0.38); line-height: 1.6; }
+
+/* accent glow on hover */
+.bento-cell.accent-hover:hover::before {
+  content:''; position:absolute; top:-60px; right:-60px;
+  width:200px; height:200px; border-radius:50%;
+  background: radial-gradient(circle, rgba(76,158,255,0.12) 0%, transparent 70%);
+  pointer-events:none;
+}
+
+/* ── HOW IT WORKS — STICKY SCROLL ── */
+.sticky-section {
+  background: #050507;
+  padding: 120px 0;
+}
+.sticky-inner {
+  max-width: 1100px; margin: 0 auto;
+  padding: 0 40px;
+}
+.sticky-header { margin-bottom: 80px; }
+
+.steps-wrap {
+  display: flex; flex-direction: column; gap: 0;
+}
+.step-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 60px; align-items: center;
+  padding: 80px 0;
+  border-top: 1px solid #1d1d1f;
+}
+.step-row:last-child { border-bottom: 1px solid #1d1d1f; }
+.step-row.flip { direction: rtl; }
+.step-row.flip > * { direction: ltr; }
+
+.step-num-big {
+  font-size: 100px; font-weight: 800; letter-spacing: -0.06em;
+  color: rgba(255,255,255,0.04); line-height: 1;
+  margin-bottom: -16px;
+}
+.step-title {
+  font-size: clamp(24px, 3vw, 36px); font-weight: 700;
+  letter-spacing: -0.02em; margin-bottom: 16px; color: #f5f5f7;
+}
+.step-body {
+  font-size: 16px; color: rgba(255,255,255,0.4); line-height: 1.7;
+}
+.step-tag {
+  display: inline-block; margin-bottom: 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #4c9eff;
+}
+
+.step-visual {
+  aspect-ratio: 4/3;
+  background: #111214;
+  border-radius: 20px;
+  border: 1px solid #1d1d1f;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* visual 1 — camera scan lines */
+.vis-camera { width:100%; height:100%; position:relative; overflow:hidden; }
+.scan-line {
+  position:absolute; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, transparent, #4c9eff, transparent);
+  animation: scan 2s ease-in-out infinite;
+  opacity: 0.6;
+}
+@keyframes scan { 0%{top:10%} 50%{top:80%} 100%{top:10%} }
+.grid-overlay {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(76,158,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76,158,255,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.target-box {
+  position:absolute; top:30%; left:35%; width:30%; height:35%;
+  border:2px solid #4c9eff;
+  border-radius:4px;
+  animation: targetpulse 1.5s ease-in-out infinite;
+}
+.target-box::before, .target-box::after {
+  content:''; position:absolute;
+  width:8px; height:8px;
+  border-color: #4c9eff;
+  border-style: solid;
+}
+.target-box::before { top:-2px; left:-2px; border-width:2px 0 0 2px; }
+.target-box::after  { bottom:-2px; right:-2px; border-width:0 2px 2px 0; }
+@keyframes targetpulse { 0%,100%{box-shadow:0 0 0 0 rgba(76,158,255,0)} 50%{box-shadow:0 0 0 6px rgba(76,158,255,0.2)} }
+.cam-label {
+  position:absolute; bottom:16px; left:16px;
+  font-size:11px; letter-spacing:0.06em; color:#4c9eff;
+  text-transform:uppercase; font-weight:500;
+}
+
+/* visual 2 — AI brain nodes */
+.vis-brain { width:100%; height:100%; position:relative; }
+.vis-brain svg { width:100%; height:100%; }
+
+/* visual 3 — map path */
+.vis-map { width:100%; height:100%; position:relative; }
+.vis-map svg { width:100%; height:100%; }
+
+/* visual 4 — dashboard dials */
+.vis-dash { width:100%; height:100%; display:flex; align-items:center; justify-content:center; gap:24px; padding:24px; }
+.dial-wrap { text-align:center; }
+.dial-val { font-size:28px; font-weight:700; letter-spacing:-0.03em; color:#f5f5f7; }
+.dial-lbl { font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:rgba(255,255,255,0.3); margin-top:4px; }
+.dial-bar { width:64px; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; margin:8px auto 0; overflow:hidden; }
+.dial-fill { height:100%; border-radius:2px; background:#4c9eff; transition:width 1s ease; }
+
+/* ── TEST RESULTS ── */
+.results-section {
+  background: #0a0a0a;
+  padding: 120px 40px;
+  border-top: 1px solid #1d1d1f;
+}
+.results-inner { max-width: 1100px; margin: 0 auto; }
+.results-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+}
+.results-bars { display:flex; flex-direction:column; gap:20px; }
+.r-row { }
+.r-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+.r-label { font-size:14px; color:rgba(255,255,255,0.6); }
+.r-pct { font-size:14px; font-weight:600; color:#f5f5f7; }
+.r-track { height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
+.r-fill { height:100%; border-radius:2px; width:0; transition: width 1.2s cubic-bezier(0.22,1,0.36,1); }
+.r-fill.blue  { background: linear-gradient(90deg,#4c9eff,#a78bfa); }
+.r-fill.green { background: linear-gradient(90deg,#34d399,#4c9eff); }
+
+.big-number-block {
+  background: #111214; border-radius: 24px;
+  border: 1px solid #1d1d1f;
+  padding: 48px 40px; text-align: center;
+}
+.big-n { font-size: 88px; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }
+.big-n.blue { background: linear-gradient(135deg,#4c9eff,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.big-n-label { font-size: 16px; color: rgba(255,255,255,0.4); margin-top: 12px; line-height:1.5; }
+.big-n-sub { font-size: 13px; color: rgba(255,255,255,0.2); margin-top: 6px; }
+
+/* ── IMPACT SECTION ── */
+.impact-section {
+  padding: 140px 40px;
+  max-width: 900px; margin: 0 auto;
+  text-align: center;
+}
+.impact-quote {
+  font-size: clamp(22px, 3.5vw, 38px);
+  font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.35; color: #f5f5f7;
+  margin-bottom: 48px;
+}
+.impact-quote em { font-style:normal; color: #4c9eff; }
+
+.impact-chips {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+}
+.chip {
+  background: #111214; border: 1px solid #2a2a2e;
+  border-radius: 100px; padding: 10px 20px;
+  font-size: 14px; color: rgba(255,255,255,0.55);
+  transition: border-color 0.2s, color 0.2s;
+}
+.chip:hover { border-color: #4c9eff; color: #f5f5f7; }
+
+/* ── TEAM ── */
+.team-section {
+  background: #050507;
+  border-top: 1px solid #1d1d1f;
+  padding: 120px 40px;
+  text-align: center;
+}
+.team-inner { max-width: 700px; margin: 0 auto; }
+.team-section .section-h2 { margin-bottom: 12px; }
+.team-sub { font-size:17px; color:rgba(255,255,255,0.35); margin-bottom:52px; }
+
+.team-grid {
+  display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+  margin-bottom: 40px;
+}
+.t-card {
+  background: #111214; border: 1px solid #1d1d1f;
+  border-radius: 100px; padding: 12px 24px;
+  font-size: 15px; color: rgba(255,255,255,0.7);
+  transition: border-color 0.25s, color 0.25s, transform 0.2s;
+  cursor: default;
+}
+.t-card:hover { border-color:#4c9eff; color:#f5f5f7; transform:translateY(-2px); }
+
+.supervisor {
+  font-size: 13px; color: rgba(255,255,255,0.22);
+  line-height: 1.7;
+}
+.supervisor strong { color: rgba(255,255,255,0.4); font-weight:500; }
+
+/* ── FOOTER ── */
+footer {
+  border-top: 1px solid #1d1d1f;
+  padding: 32px 40px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #000;
+}
+.footer-l { font-size:13px; color:rgba(255,255,255,0.2); }
+.footer-r { font-size:13px; color:rgba(255,255,255,0.15); }
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .bento { grid-template-columns:1fr; }
+  .bento-cell.wide { grid-column:span 1; }
+  .step-row { grid-template-columns:1fr; gap:32px; }
+  .step-row.flip { direction:ltr; }
+  .results-grid { grid-template-columns:1fr; }
+  .stat-ribbon { flex-wrap:wrap; }
+  .stat-cell { max-width:50%; border-bottom:1px solid #1d1d1f; }
+  .nav-links { display:none; }
+  footer { flex-direction:column; gap:8px; text-align:center; }
+}
+
+/* reduce motion */
+@media(prefers-reduced-motion:reduce){
+  *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-logo">F<span>&</span>D</div>
+  <div class="nav-links">
+    <a href="#capabilities">Capabilities</a>
+    <a href="#how">How it works</a>
+    <a href="#results">Results</a>
+    <a href="#team">Team</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <canvas id="starfield"></canvas>
+  <div class="hero-eyebrow">TED University · Computer Engineering · Final Project</div>
+  <h1 class="hero-h1">Autonomous driving.<br><span class="line2">One camera.<br>Zero expensive sensors.</span></h1>
+  <p class="hero-sub">Most self-driving projects rely on equipment that costs thousands of dollars. We built software that achieves the same goals using just a single, budget-friendly camera.</p>
+  <a href="#capabilities" class="hero-cta">See what it does</a>
+  <div class="scroll-hint">
+    <span>Scroll</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</section>
+
+<!-- ROAD SCENE -->
+<div class="road-strip">
+  <div class="road-wrap">
+    <div class="center-dashes">
+      <div class="center-dash"></div><div class="center-dash"></div>
+      <div class="center-dash"></div><div class="center-dash"></div>
+      <div class="center-dash"></div><div class="center-dash"></div>
+    </div>
+    <div class="road-radar">
+      <div class="rr rr1"></div><div class="rr rr2"></div><div class="rr rr3"></div>
+    </div>
+    <div class="road-car">
+      <svg width="100" height="52" viewBox="0 0 100 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="22" width="84" height="26" rx="7" fill="#1c1c1e" stroke="#333" stroke-width="1"/>
+        <rect x="20" y="10" width="58" height="18" rx="6" fill="#2a2a2e" stroke="#444" stroke-width="1"/>
+        <rect x="26" y="13" width="20" height="11" rx="3" fill="#4c9eff" opacity="0.65"/>
+        <rect x="52" y="13" width="20" height="11" rx="3" fill="#4c9eff" opacity="0.65"/>
+        <circle cx="22" cy="46" r="7" fill="#0f0f0f" stroke="#555" stroke-width="1.5"/>
+        <circle cx="78" cy="46" r="7" fill="#0f0f0f" stroke="#555" stroke-width="1.5"/>
+        <circle cx="22" cy="46" r="3" fill="#333"/>
+        <circle cx="78" cy="46" r="3" fill="#333"/>
+        <ellipse cx="92" cy="29" rx="5" ry="3.5" fill="white" opacity="0.9"/>
+        <ellipse cx="92" cy="35" rx="4" ry="2.5" fill="white" opacity="0.6"/>
+        <ellipse cx="8"  cy="29" rx="4" ry="3" fill="#ff453a" opacity="0.8"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- STAT RIBBON -->
+<div class="stat-ribbon">
+  <div class="stat-cell reveal delay-1">
+    <div class="stat-n">92%</div>
+    <div class="stat-l">of all 52 tests passed</div>
+  </div>
+  <div class="stat-cell reveal delay-2">
+    <div class="stat-n">120K+</div>
+    <div class="stat-l">AI training practice runs</div>
+  </div>
+  <div class="stat-cell reveal delay-3">
+    <div class="stat-n">100%</div>
+    <div class="stat-l">obstacle detection rate</div>
+  </div>
+  <div class="stat-cell reveal delay-4">
+    <div class="stat-n">4</div>
+    <div class="stat-l">students who built it all</div>
+  </div>
+</div>
+
+<!-- CAPABILITIES -->
+<div id="capabilities" style="background:#000;">
+  <div class="section">
+    <div class="eyebrow reveal">Capabilities</div>
+    <h2 class="section-h2 reveal delay-1">What the car<br>can do on its own.</h2>
+    <p class="section-body reveal delay-2">One camera. No radar. No lidar. No expensive hardware. Just software smart enough to handle the road.</p>
+
+    <div class="bento">
+      <div class="bento-cell wide accent-hover reveal delay-1">
+        <span class="bento-icon">👁️</span>
+        <div class="bento-h">Sees the road ahead</div>
+        <p class="bento-p">Uses a single camera to track lane lines and spot road signs in real-time — no expensive sensor array required.</p>
+      </div>
+      <div class="bento-cell accent-hover reveal delay-2">
+        <span class="bento-icon">🤖</span>
+        <div class="bento-h">Measures distance</div>
+        <p class="bento-p">Judges how far away objects are using only camera footage — no radar, no lidar, no expensive depth sensors needed.</p>
+      </div>
+      <div class="bento-cell accent-hover reveal delay-1">
+        <span class="bento-icon">🧭</span>
+        <div class="bento-h">Avoids obstacles</div>
+        <p class="bento-p">Instantly detects hazards in the road so the vehicle can react safely — all from camera input alone.</p>
+      </div>
+      <div class="bento-cell accent-hover reveal delay-2">
+        <span class="bento-icon">🛑</span>
+        <div class="bento-h">Plots the best route</div>
+        <p class="bento-p">Calculates the smartest path from point A to point B smoothly — navigating intersections and turns without human input.</p>
+      </div>
+      <div class="bento-cell accent-hover reveal delay-3">
+        <span class="bento-icon">🚨</span>
+        <div class="bento-h">The goal</div>
+        <p class="bento-p">Most self-driving projects rely on equipment that costs thousands of dollars. We challenged ourselves to build software that achieves the same basic goals using just a standard, budget-friendly camera.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section id="how" class="sticky-section">
+  <div class="sticky-inner">
+    <div class="sticky-header">
+      <div class="eyebrow reveal">How it works</div>
+      <h2 class="section-h2 reveal delay-1">Four steps.<br>Zero humans.</h2>
+      <p class="section-body reveal delay-2">Every fraction of a second, the car runs through this loop entirely on its own.</p>
+    </div>
+
+    <div class="steps-wrap">
+
+      <!-- STEP 1 -->
+      <div class="step-row reveal">
+        <div>
+          <div class="step-num-big">01</div>
+          <div class="step-tag">Perception</div>
+          <div class="step-title">The car sees the world</div>
+          <p class="step-body">A forward-facing camera captures the road, lane markings, signs, and obstacles — dozens of times every second. AI vision models (the same kind used in smartphones) scan each frame and understand what's there.</p>
+        </div>
+        <div class="step-visual reveal-right">
+          <div class="vis-camera">
+            <div class="grid-overlay"></div>
+            <div class="scan-line"></div>
+            <div class="target-box"></div>
+            <div class="cam-label">Live perception feed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="step-row flip reveal">
+        <div>
+          <div class="step-num-big">02</div>
+          <div class="step-tag">Understanding</div>
+          <div class="step-title">AI makes sense of it</div>
+          <p class="step-body">Neural networks — layers of math inspired by the human brain — process the raw camera data into meaning: where are the lanes? Is there a stop sign? Is something in the way?</p>
+        </div>
+        <div class="step-visual reveal-left">
+          <svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="rgba(76,158,255,0.6)" stroke-width="2" stroke-linecap="round"/>
+              </marker>
+            </defs>
+            <!-- input nodes -->
+            <circle cx="40" cy="50"  r="10" fill="rgba(76,158,255,0.15)" stroke="rgba(76,158,255,0.5)" stroke-width="1"/>
+            <circle cx="40" cy="100" r="10" fill="rgba(76,158,255,0.15)" stroke="rgba(76,158,255,0.5)" stroke-width="1"/>
+            <circle cx="40" cy="150" r="10" fill="rgba(76,158,255,0.15)" stroke="rgba(76,158,255,0.5)" stroke-width="1"/>
+            <!-- hidden layer -->
+            <circle cx="120" cy="40"  r="10" fill="rgba(167,139,250,0.15)" stroke="rgba(167,139,250,0.5)" stroke-width="1"/>
+            <circle cx="120" cy="80"  r="10" fill="rgba(167,139,250,0.15)" stroke="rgba(167,139,250,0.5)" stroke-width="1"/>
+            <circle cx="120" cy="120" r="10" fill="rgba(167,139,250,0.15)" stroke="rgba(167,139,250,0.5)" stroke-width="1"/>
+            <circle cx="120" cy="160" r="10" fill="rgba(167,139,250,0.15)" stroke="rgba(167,139,250,0.5)" stroke-width="1"/>
+            <!-- hidden 2 -->
+            <circle cx="200" cy="60"  r="10" fill="rgba(52,211,153,0.15)" stroke="rgba(52,211,153,0.5)" stroke-width="1"/>
+            <circle cx="200" cy="100" r="10" fill="rgba(52,211,153,0.15)" stroke="rgba(52,211,153,0.5)" stroke-width="1"/>
+            <circle cx="200" cy="140" r="10" fill="rgba(52,211,153,0.15)" stroke="rgba(52,211,153,0.5)" stroke-width="1"/>
+            <!-- output -->
+            <circle cx="270" cy="80"  r="10" fill="rgba(76,158,255,0.25)" stroke="#4c9eff" stroke-width="1.5"/>
+            <circle cx="270" cy="120" r="10" fill="rgba(76,158,255,0.25)" stroke="#4c9eff" stroke-width="1.5"/>
+            <!-- connections input->h1 -->
+            <line x1="50" y1="50"  x2="110" y2="40"  stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="50"  x2="110" y2="80"  stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="50"  x2="110" y2="120" stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="100" x2="110" y2="40"  stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="100" x2="110" y2="80"  stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="100" x2="110" y2="120" stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="100" x2="110" y2="160" stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="150" x2="110" y2="80"  stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="150" x2="110" y2="120" stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <line x1="50" y1="150" x2="110" y2="160" stroke="rgba(76,158,255,0.15)" stroke-width="1"/>
+            <!-- h1->h2 -->
+            <line x1="130" y1="40"  x2="190" y2="60"  stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <line x1="130" y1="80"  x2="190" y2="60"  stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <line x1="130" y1="80"  x2="190" y2="100" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <line x1="130" y1="120" x2="190" y2="100" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <line x1="130" y1="120" x2="190" y2="140" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <line x1="130" y1="160" x2="190" y2="140" stroke="rgba(167,139,250,0.12)" stroke-width="1"/>
+            <!-- h2->out -->
+            <line x1="210" y1="60"  x2="260" y2="80"  stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+            <line x1="210" y1="100" x2="260" y2="80"  stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+            <line x1="210" y1="100" x2="260" y2="120" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+            <line x1="210" y1="140" x2="260" y2="120" stroke="rgba(52,211,153,0.2)" stroke-width="1"/>
+            <!-- labels -->
+            <text x="40" y="186" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="sans-serif">Input</text>
+            <text x="120" y="186" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="sans-serif">Hidden</text>
+            <text x="200" y="186" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="sans-serif">Hidden</text>
+            <text x="270" y="186" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-size="9" font-family="sans-serif">Output</text>
+            <!-- animated pulse on output -->
+            <circle cx="270" cy="80" r="10" fill="none" stroke="#4c9eff" stroke-width="1" opacity="0">
+              <animate attributeName="r" values="10;22;10" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="step-row reveal">
+        <div>
+          <div class="step-num-big">03</div>
+          <div class="step-tag">Planning</div>
+          <div class="step-title">It plots the best path</div>
+          <p class="step-body">A routing brain (using the same algorithm Google Maps uses) calculates the optimal route across 90+ waypoints — accounting for road rules, intersections, and obstacles — in milliseconds.</p>
+        </div>
+        <div class="step-visual reveal-right">
+          <svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+            <!-- road grid -->
+            <line x1="60" y1="20" x2="60" y2="180" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <line x1="150" y1="20" x2="150" y2="180" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <line x1="240" y1="20" x2="240" y2="180" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <line x1="20" y1="60" x2="280" y2="60" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <line x1="20" y1="140" x2="280" y2="140" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <!-- route path -->
+            <polyline points="50,160 50,60 150,60 150,140 240,140 240,60 260,60"
+              fill="none" stroke="#4c9eff" stroke-width="2.5" stroke-dasharray="6,4"
+              stroke-dashoffset="0">
+              <animate attributeName="stroke-dashoffset" values="0;-100" dur="2s" repeatCount="indefinite"/>
+            </polyline>
+            <!-- waypoints -->
+            <circle cx="50"  cy="160" r="6" fill="#4c9eff"/>
+            <circle cx="50"  cy="60"  r="5" fill="rgba(76,158,255,0.5)" stroke="#4c9eff" stroke-width="1"/>
+            <circle cx="150" cy="60"  r="5" fill="rgba(76,158,255,0.5)" stroke="#4c9eff" stroke-width="1"/>
+            <circle cx="150" cy="140" r="5" fill="rgba(76,158,255,0.5)" stroke="#4c9eff" stroke-width="1"/>
+            <circle cx="240" cy="140" r="5" fill="rgba(76,158,255,0.5)" stroke="#4c9eff" stroke-width="1"/>
+            <circle cx="240" cy="60"  r="5" fill="rgba(76,158,255,0.5)" stroke="#4c9eff" stroke-width="1"/>
+            <circle cx="260" cy="60"  r="8" fill="rgba(52,211,153,0.2)" stroke="#34d399" stroke-width="2"/>
+            <!-- start/end labels -->
+            <text x="50" y="178" text-anchor="middle" fill="#4c9eff" font-size="9" font-family="sans-serif">Start</text>
+            <text x="262" y="50" text-anchor="middle" fill="#34d399" font-size="9" font-family="sans-serif">Goal</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="step-row flip reveal">
+        <div>
+          <div class="step-num-big">04</div>
+          <div class="step-tag">Control</div>
+          <div class="step-title">The car drives itself</div>
+          <p class="step-body">The AI sends steering and throttle commands directly to the vehicle — no human in the loop. It holds its lane, accelerates smoothly, and stops when it needs to. All by itself.</p>
+        </div>
+        <div class="step-visual reveal-left">
+          <div class="vis-dash" id="dashPanel">
+            <div class="dial-wrap">
+              <div class="dial-val" id="speedVal">0</div>
+              <div class="dial-lbl">Speed</div>
+              <div class="dial-bar"><div class="dial-fill" id="speedFill" style="width:0%"></div></div>
+            </div>
+            <div class="dial-wrap">
+              <div class="dial-val" id="steerVal">0°</div>
+              <div class="dial-lbl">Steering</div>
+              <div class="dial-bar"><div class="dial-fill" id="steerFill" style="width:50%; background:rgba(52,211,153,0.8)"></div></div>
+            </div>
+            <div class="dial-wrap">
+              <div class="dial-val" style="color:#34d399">✓</div>
+              <div class="dial-lbl">Lane OK</div>
+              <div class="dial-bar"><div class="dial-fill" style="width:100%; background:#34d399"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section id="results" class="results-section">
+  <div class="results-inner">
+    <div class="eyebrow reveal">Test results</div>
+    <h2 class="section-h2 reveal delay-1">52 tests. 48 passed.<br>First try.</h2>
+
+    <div class="results-grid" style="margin-top:56px;">
+      <div class="results-bars">
+        <div class="r-row reveal delay-1">
+          <div class="r-top"><span class="r-label">Stop sign detection</span><span class="r-pct">100%</span></div>
+          <div class="r-track"><div class="r-fill green" data-w="100"></div></div>
+        </div>
+        <div class="r-row reveal delay-2">
+          <div class="r-top"><span class="r-label">Emergency braking</span><span class="r-pct">100%</span></div>
+          <div class="r-track"><div class="r-fill green" data-w="100"></div></div>
+        </div>
+        <div class="r-row reveal delay-3">
+          <div class="r-top"><span class="r-label">Route planning</span><span class="r-pct">100%</span></div>
+          <div class="r-track"><div class="r-fill green" data-w="100"></div></div>
+        </div>
+        <div class="r-row reveal delay-4">
+          <div class="r-top"><span class="r-label">Lane detection</span><span class="r-pct">100%</span></div>
+          <div class="r-track"><div class="r-fill green" data-w="100"></div></div>
+        </div>
+        <div class="r-row reveal delay-5">
+          <div class="r-top"><span class="r-label">Overall pass rate</span><span class="r-pct">92%</span></div>
+          <div class="r-track"><div class="r-fill blue" data-w="92"></div></div>
+        </div>
+      </div>
+
+      <div class="big-number-block reveal delay-2">
+        <div class="big-n blue">92%</div>
+        <div class="big-n-label">of all tests passed on the first attempt</div>
+        <div class="big-n-sub">The remaining 8% have identified fixes — already in progress.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TEAM -->
+<section id="team" class="team-section">
+  <div class="team-inner">
+    <div class="eyebrow reveal" style="text-align:center">The team</div>
+    <h2 class="section-h2 reveal delay-1">Four students.<br>One camera.<br>One self-driving car.</h2>
+    <p class="team-sub reveal delay-2">Four engineers. One camera. Built over one academic year at TED University, Ankara.</p>
+    <div class="team-grid reveal delay-2">
+      <div class="t-card">Can Soysal</div>
+      <div class="t-card">Taha Ugan</div>
+      <div class="t-card">Mustafa Cem Hür</div>
+      <div class="t-card">Taylan Kayalı</div>
+    </div>
+    <p class="supervisor reveal delay-3">
+      Supervised by <strong>Tolga Kurtuluş Çapın</strong><br>
+      TED University · Faculty of Engineering · Department of Computer Engineering
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-l">F&amp;D Autonomous Driving · TED University</div>
+  <div class="footer-r">Computer Engineering Final Project</div>
+</footer>
+
+<script>
+/* ── STARFIELD ── */
+(function(){
+  const c = document.getElementById('starfield');
+  const ctx = c.getContext('2d');
+  let W, H, stars;
+  function init(){
+    W = c.width = c.offsetWidth;
+    H = c.height = c.offsetHeight;
+    stars = Array.from({length:120}, () => ({
+      x: Math.random()*W, y: Math.random()*H,
+      r: Math.random()*1.2+0.2,
+      a: Math.random(),
+      speed: Math.random()*0.004+0.001
+    }));
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    stars.forEach(s=>{
+      s.a += s.speed;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${0.1+Math.abs(Math.sin(s.a))*0.5})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize', init);
+  init(); draw();
+})();
+
+/* ── NAV scroll ── */
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', ()=>{
+  nav.classList.toggle('scrolled', window.scrollY > 40);
+}, {passive:true});
+
+/* ── INTERSECTION OBSERVER for reveals ── */
+const observer = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      e.target.classList.add('visible');
+      // animate bars if inside
+      e.target.querySelectorAll('.r-fill').forEach(b=>{
+        b.style.width = b.getAttribute('data-w') + '%';
+      });
+      observer.unobserve(e.target);
+    }
+  });
+}, {threshold:0.15});
+
+document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => observer.observe(el));
+
+/* also watch bar rows individually */
+document.querySelectorAll('.r-row').forEach(row => {
+  const obs2 = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        e.target.querySelectorAll('.r-fill').forEach(b=>{
+          b.style.width = b.getAttribute('data-w')+'%';
+        });
+        obs2.unobserve(e.target);
+      }
+    });
+  },{threshold:0.5});
+  obs2.observe(row);
+});
+
+/* ── DASHBOARD ANIMATION ── */
+(function(){
+  let tick=0;
+  const sv = document.getElementById('speedVal');
+  const sf = document.getElementById('speedFill');
+  const stv = document.getElementById('steerVal');
+  const stf = document.getElementById('steerFill');
+  if(!sv) return;
+  function anim(){
+    tick += 0.025;
+    const speed = Math.round(20 + Math.sin(tick)*8 + Math.sin(tick*2.3)*4);
+    const steer = Math.round(Math.sin(tick*0.7)*18);
+    sv.textContent = speed;
+    sf.style.width = (speed/40*100)+'%';
+    stv.textContent = steer+'°';
+    stf.style.width = (50 + steer/36*50)+'%';
+    requestAnimationFrame(anim);
+  }
+  anim();
+})();
+
+/* ── PARALLAX on hero ── */
+window.addEventListener('scroll', ()=>{
+  const y = window.scrollY;
+  const h1 = document.querySelector('.hero-h1');
+  const sub = document.querySelector('.hero-sub');
+  if(h1) h1.style.transform = `translateY(${y*0.25}px)`;
+  if(sub) sub.style.transform = `translateY(${y*0.15}px)`;
+}, {passive:true});
+</script>
+</body>
+</html>
